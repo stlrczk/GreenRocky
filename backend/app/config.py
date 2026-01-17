@@ -12,6 +12,7 @@ class Settings(BaseSettings):
     tenders_file: str = "data/Tenders_List.json"
     embeddings_cache_file: str = "data/embeddings_cache.json"
     feedback_file: str = "data/feedback.jsonl"
+    company_embeddings_file: str = "data/company_embeddings.jsonl"
 
     # OpenAI settings
     embedding_model: str = "text-embedding-3-small"
@@ -19,6 +20,7 @@ class Settings(BaseSettings):
 
     # Feedback settings
     feedback_smoothing_factor: int = 10
+    feedback_similarity_threshold: float = 0.7  # Threshold for company similarity
 
     class Config:
         env_file = ".env"

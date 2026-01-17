@@ -1,5 +1,6 @@
 from fastapi import APIRouter, HTTPException
 import time
+import hashlib
 from app.models.company import CompanyProfileRequest, RankingResponse
 from app.services.tender_service import TenderService
 from app.services.embedding_service import EmbeddingService
@@ -40,6 +41,14 @@ async def rank_tenders(request: CompanyProfileRequest):
         print(f"Generating embedding for company description...")
         company_embedding = embedding_service.generate_embedding(request.company_description)
 
+        # Store company embedding immediately (for later feedback usage)
+        company_hash = hashlib.sha256(request.company_description.encode('utf-8')).hexdigest()
+        feedback_service.save_company_embedding(
+            company_hash=company_hash,
+            embedding=company_embedding
+        )
+        print(f"Stored company embedding with hash: {company_hash[:16]}...")
+
         # Rank tenders by similarity
         print(f"Ranking {len(tenders)} tenders...")
         ranked_results = ranking_service.rank_tenders(
@@ -49,11 +58,14 @@ async def rank_tenders(request: CompanyProfileRequest):
             top_n=request.top_n
         )
 
-        # Apply feedback weights if requested
+        # Apply company-aware feedback weights if requested
         if request.use_feedback:
-            feedback_weights = feedback_service.calculate_feedback_weights()
+            feedback_weights = feedback_service.calculate_feedback_weights(
+                company_embedding=company_embedding,
+                similarity_threshold=settings.feedback_similarity_threshold
+            )
             if feedback_weights:
-                print(f"Applying feedback weights from {len(feedback_weights)} tenders")
+                print(f"Applying company-aware feedback weights from {len(feedback_weights)} tenders")
                 ranked_results = ranking_service.apply_feedback_weights(
                     ranked_results,
                     feedback_weights
