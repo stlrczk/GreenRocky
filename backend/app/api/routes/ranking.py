@@ -74,14 +74,10 @@ async def rank_tenders(request: CompanyProfileRequest):
         # Create tender lookup dictionary
         tenders_dict = {tender.id: tender for tender in tenders}
 
-        # Get feedback data for display
-        feedback_data = feedback_service.get_all_feedback_by_tender()
-
-        # Create response objects
+        # Create response objects (without feedback data)
         ranked_tenders = ranking_service.create_ranked_tender_response(
             ranked_results,
-            tenders_dict,
-            feedback_data
+            tenders_dict
         )
 
         processing_time = (time.time() - start_time) * 1000  # Convert to ms

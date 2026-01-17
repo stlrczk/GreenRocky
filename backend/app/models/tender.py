@@ -40,7 +40,6 @@ class RankedTender(BaseModel):
     files_count: int
     relevance_score: float = Field(..., ge=0.0, le=1.0)
     ranking_position: int = Field(..., ge=1)
-    user_feedback: Optional[str] = None  # "positive" or "negative"
 
 
 class TendersResponse(BaseModel):

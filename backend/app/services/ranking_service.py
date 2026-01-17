@@ -94,8 +94,7 @@ class RankingService:
     def create_ranked_tender_response(
         self,
         ranked_results: List[Tuple[str, float]],
-        tenders_dict: Dict[str, any],
-        feedback_data: Dict[str, dict] = None
+        tenders_dict: Dict[str, any]
     ) -> List[RankedTender]:
         """
         Create RankedTender objects from ranking results.
@@ -103,7 +102,6 @@ class RankingService:
         Args:
             ranked_results: List of (tender_id, score) tuples
             tenders_dict: Dictionary mapping tender_id to Tender object
-            feedback_data: Dictionary mapping tender_id to feedback info
 
         Returns:
             List of RankedTender objects
@@ -114,15 +112,6 @@ class RankingService:
             tender = tenders_dict.get(tender_id)
             if not tender:
                 continue
-
-            # Determine user feedback status
-            user_feedback = None
-            if feedback_data and tender_id in feedback_data:
-                feedback_info = feedback_data[tender_id]
-                if feedback_info['positive'] > feedback_info['negative']:
-                    user_feedback = "positive"
-                elif feedback_info['negative'] > feedback_info['positive']:
-                    user_feedback = "negative"
 
             ranked_tender = RankedTender(
                 id=tender_id,
@@ -135,8 +124,7 @@ class RankingService:
                 source_type=tender.metadata.source_type,
                 files_count=tender.files_count,
                 relevance_score=round(score, 4),
-                ranking_position=position,
-                user_feedback=user_feedback
+                ranking_position=position
             )
 
             ranked_tenders.append(ranked_tender)

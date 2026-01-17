@@ -10,9 +10,7 @@ interface TenderCardProps {
 }
 
 export default function TenderCard({ tender, onFeedback }: TenderCardProps) {
-  const [localFeedback, setLocalFeedback] = useState<'positive' | 'negative' | null>(
-    tender.user_feedback
-  );
+  const [localFeedback, setLocalFeedback] = useState<'positive' | 'negative' | null>(null);
 
   const handleFeedback = (feedback: 'positive' | 'negative') => {
     setLocalFeedback(feedback);

@@ -13,7 +13,6 @@ export interface Tender {
 export interface RankedTender extends Tender {
   relevance_score: number;
   ranking_position: number;
-  user_feedback: "positive" | "negative" | null;
 }
 
 export interface TendersResponse {
