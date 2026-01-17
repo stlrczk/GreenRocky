@@ -1,210 +1,243 @@
-# Tender Matching System - MVP
+# AI Tender Matching System
 
-An AI-powered tender matching system that ranks Polish tenders against company profiles using OpenAI embeddings.
+An MVP system that matches Polish tenders to companies using OpenAI embeddings and user feedback.
 
-## Tech Stack
+**Tech Stack:** FastAPI (backend), Next.js 14 (frontend), OpenAI text-embedding-3-small
 
-### Backend
-- FastAPI
+---
+
+## Quick Start
+
+### Prerequisites
 - Python 3.11+
-- OpenAI API (text-embedding-3-small)
-- NumPy
+- Node.js 18+
+- OpenAI API key
 
-### Frontend
-- Next.js 14 (App Router)
-- React 18
-- TypeScript
-- Tailwind CSS
-- React Query
+### Setup
 
-## Project Structure
-
-```
-GreenRocky/
-├── backend/          # FastAPI backend
-│   ├── app/
-│   │   ├── api/      # API routes
-│   │   ├── models/   # Pydantic models
-│   │   └── services/ # Business logic
-│   └── data/         # Data files
-├── frontend/         # Next.js frontend
-│   ├── app/          # App router pages
-│   ├── components/   # React components
-│   └── lib/          # Utilities & API client
-└── company_profile.md
-```
-
-## Setup Instructions
-
-### 1. Backend Setup
-
+**Backend:**
 ```bash
 cd backend
-
-# Create virtual environment
 python3 -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-
-# Install dependencies
+source venv/bin/activate  # Windows: venv\Scripts\activate
 pip install -r requirements.txt
-
-# Configure environment
 cp .env.example .env
-# Edit .env and add your OpenAI API key
+# Add your OPENAI_API_KEY to .env
 ```
 
-### 2. Frontend Setup
-
+**Frontend:**
 ```bash
 cd frontend
-
-# Install dependencies
 npm install
-
-# Configure environment
 cp .env.local.example .env.local
-# Edit .env.local if needed (default: http://localhost:8000)
 ```
 
-### 3. Run the Application
+### Run
 
-**Terminal 1 - Backend:**
+**Option 1 - Using start scripts (recommended):**
 ```bash
+# Terminal 1 - Backend
+cd backend
+./start.sh
+
+# Terminal 2 - Frontend
+cd frontend
+./start.sh
+```
+
+**Option 2 - Manual commands:**
+```bash
+# Terminal 1 - Backend
 cd backend
 source venv/bin/activate
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
-```
 
-**Terminal 2 - Frontend:**
-```bash
+# Terminal 2 - Frontend
 cd frontend
 npm run dev
 ```
 
-Visit http://localhost:3000 in your browser.
+Open [http://localhost:3000](http://localhost:3000)
 
-## How It Works
+---
 
-### AI Ranking Process
+## How Recommendations Work
 
-1. **One-Time Setup**: Generate embeddings for all 1,412 tenders (cached)
-2. **User Query**: Generate embedding for company description
-3. **Similarity Calculation**: Compute cosine similarity between company and each tender
-4. **Ranking**: Sort by similarity score, return top 100
-5. **Feedback Integration**: Adjust scores based on historical thumbs up/down feedback
+### 1. **Semantic Matching with Embeddings**
 
-### Cost Efficiency
-- Initial setup: ~$0.0014 (one-time)
-- Per query: ~$0.000006
-- Monthly (3K queries): ~$0.02
+The system converts both tenders and company descriptions into high-dimensional vectors (embeddings) using OpenAI's `text-embedding-3-small` model. These embeddings capture semantic meaning, not just keywords.
 
-### Feedback Loop
-- Users rate tenders with thumbs up/down
-- Feedback stored in JSONL file
-- Future rankings weighted by feedback history
-- Formula: `final_score = similarity × (1 + feedback_weight)`
+**Process:**
+1. **One-time setup:** Generate embeddings for all 1,412 tenders from metadata (title + organization)
+2. **Per query:** Generate embedding for user's company description
+3. **Similarity calculation:** Compute cosine similarity between company embedding and each tender embedding
+4. **Initial ranking:** Sort tenders by similarity score (0-1 range), return top 100
 
-## API Endpoints
+**Example:**
+- Company: *"We provide landscaping, tree cutting, and green area maintenance"*
+- High-scoring tender: *"Tree cutting services for Warsaw parks"* (similarity: 0.85)
+- Low-scoring tender: *"Hospital medical equipment procurement"* (similarity: 0.23)
 
-### GET /api/tenders
-Get all tenders
+### 2. **Company-Aware Feedback Adjustment**
 
-### POST /api/rank
-Rank tenders based on company description
+After initial ranking, the system applies feedback weights from **similar companies only**:
 
-**Request:**
-```json
-{
-  "company_description": "Your company description...",
-  "top_n": 100,
-  "use_feedback": true
-}
+**Feedback Formula:**
+```
+final_score = similarity_score × (1 + feedback_weight)
+
+where:
+feedback_weight = (positive - negative) / (positive + negative + 10)
 ```
 
-### POST /api/feedback
-Submit user feedback
+**Key Innovation:** Feedback is filtered by company similarity:
+- Company A (landscaping) rates tender as 👍
+- Tender gets boosted **only** for similar companies (tree services, gardening, etc.)
+- Dissimilar companies (medical, IT) are unaffected
 
-**Request:**
-```json
-{
-  "tender_id": "1243607",
-  "company_description_hash": "abc123...",
-  "feedback": "positive",
-  "timestamp": "2026-01-17T10:30:00Z"
-}
+**Similarity Threshold:** 0.7 (configurable in [backend/app/config.py](backend/app/config.py))
+
+---
+
+## User Feedback System
+
+### How Feedback Influences Ranking
+
+**Step-by-Step Flow:**
+
+1. **User rates a tender:** Clicks 👍 or 👎 on a tender card
+2. **Backend stores:**
+   - Feedback entry: `{"tender_id": "123", "company_hash": "abc...", "feedback": "positive"}`
+   - Company embedding: Saved for future similarity comparisons
+3. **Future rankings:**
+   - System calculates similarity between new company and all past companies
+   - Only feedback from similar companies (≥0.7 similarity) affects scores
+   - Positive feedback boosts scores, negative feedback reduces them
+
+**Example Scenario:**
+
+```
+Company A (GreenWorks - Landscaping):
+  → Rates Tender #1243607 "Tree cutting" as 👍 positive
+
+Company B (TreeCare - Similar to GreenWorks, 0.81 similarity):
+  → Searches for tenders
+  → Tender #1243607 IS boosted (+9% score increase)
+
+Company C (MedSupply - Medical, 0.15 similarity to GreenWorks):
+  → Searches for tenders
+  → Tender #1243607 NOT affected (similarity below 0.7 threshold)
 ```
 
-## Testing
+### Benefits of Company-Aware Feedback
 
-### Test with Example Company Profile
+- **Personalization:** Each company type learns from relevant feedback only
+- **No pollution:** Landscaping feedback doesn't affect medical companies
+- **Cold start friendly:** New companies benefit from existing similar companies' feedback
+- **Zero cost:** Reuses embeddings already generated during ranking
 
-The system includes an example company profile (GreenWorks Infrastructure Ltd.). Click "Load Example" in the UI to test.
+---
 
-Expected results: Top tenders should include:
-- Green area maintenance
-- Landscaping projects
-- Tree cutting services
-- Municipal infrastructure work
+## Key Assumptions & Limitations
 
-### Manual Testing Checklist
+### Assumptions
 
-- [ ] Backend starts without errors
-- [ ] Frontend loads at http://localhost:3000
-- [ ] Company description input works
-- [ ] "Find Matching Tenders" button triggers ranking
-- [ ] Top 100 tenders display with relevance scores
-- [ ] Thumbs up/down buttons work
-- [ ] Feedback persists (check backend/data/feedback.jsonl)
-- [ ] Re-ranking includes feedback weights
+1. **Metadata is sufficient:** Tender titles and organization names contain enough information for matching
+   - *Reality:* Most Polish tenders have descriptive titles (e.g., "Tree cutting for Warsaw parks")
+   - *Limitation:* Some tenders have vague titles ("Various services")
 
-## Troubleshooting
+2. **Text-based matching works:** Semantic similarity in embeddings correlates with business relevance
+   - *Reality:* Works well for clear service descriptions
+   - *Limitation:* Doesn't capture non-textual factors (pricing, location, certifications)
 
-### Backend won't start
-- Check OpenAI API key in .env
-- Ensure Tenders_List.json is in backend/data/
-- Verify Python 3.11+ is installed
+3. **Company similarity predicts feedback relevance:** Companies with similar descriptions have similar tender preferences
+   - *Reality:* True for most cases (landscaping companies prefer similar tenders)
+   - *Limitation:* Doesn't account for company size, experience level, or regional focus
 
-### Frontend won't connect to backend
-- Check NEXT_PUBLIC_API_URL in .env.local
-- Ensure backend is running on port 8000
-- Check CORS_ORIGINS in backend .env
+4. **User feedback is honest:** Thumbs up/down accurately reflects tender relevance
+   - *Limitation:* No spam protection, single user can skew results
 
-### Embeddings generation is slow
-- First run generates embeddings for all tenders (~30s)
-- Subsequent runs use cached embeddings (<1s)
-- Cache file: backend/data/embeddings_cache.json
+### Current Limitations
 
-## Development
+**Data:**
+- Only tender metadata used (title + organization), not full tender documents
+- 1,412 tenders from single snapshot (no updates)
+- No tender filtering (all tenders shown, regardless of deadline status)
 
-### Adding New Features
+**Functionality:**
+- No user accounts or session persistence
+- No tender search/filtering by category, location, or deadline
+- No notification system for new matching tenders
+- Feedback buttons reset on page refresh (local state only)
 
-1. **Backend**: Add routes in `backend/app/api/routes/`
-2. **Frontend**: Add components in `frontend/components/`
-3. **Types**: Update `frontend/lib/types.ts` to match backend models
+**Performance:**
+- First ranking query takes ~500ms (acceptable for MVP)
+- Company embeddings file grows linearly (~15KB per company)
+- No optimization for 10,000+ companies (would need vector database)
 
-### Code Style
+**Cost:**
+- Initial setup: $0.0014 (one-time)
+- Per query: $0.000006 (~$0.02/month for 3,000 queries)
+- Cost increases 71× if using full tender documents (~$0.10/month)
 
-- Backend: PEP 8 (Python)
-- Frontend: ESLint + Prettier (TypeScript/React)
-- Use descriptive variable names
-- Add comments for complex logic
+---
 
-## Production Deployment
+## Next Iteration Improvements
 
-### Backend
-- Deploy to Railway.app, Render.com, or similar
-- Set environment variables (OPENAI_API_KEY, CORS_ORIGINS)
-- Ensure persistent volume for data files
+### High Priority (Core Functionality)
 
-### Frontend
-- Deploy to Vercel or Netlify
-- Set NEXT_PUBLIC_API_URL to production backend URL
-- Enable automatic deployments from Git
+1. **Full Document Embeddings**
+   - Use tender detail files instead of just metadata
+   - Cost: ~$0.10 one-time for all 1,412 tenders
+   - Expected improvement: 15-20% better precision
+   - **Implementation:** [COST_ANALYSIS.md](COST_ANALYSIS.md) has full analysis
 
-## License
+2. **User Accounts & Saved Preferences**
+   - Persistent feedback history per user
+   - Saved company descriptions
+   - Email notifications for new matching tenders
+   - **Stack:** Add PostgreSQL + authentication (JWT or OAuth)
 
-MIT
+3. **Advanced Filtering**
+   - Filter by deadline, location, tender value range
+   - Category-based filtering (construction, services, goods)
+   - Hide expired tenders automatically
+   - **Implementation:** Add filters to ranking endpoint + frontend UI
 
-## Contact
+4. **Tender Updates**
+   - Automatic scraping of new tenders (daily/weekly)
+   - Notification system for new matches above threshold
+   - Archive old tenders past deadline
 
-For questions or issues, please create an issue in the repository.
+### Medium Priority (UX & Performance)
+
+5. **Improved Feedback Visualization**
+   - Show why tender was recommended (matching keywords)
+   - Display feedback confidence (e.g., "5 similar companies ranked it as relevant")
+   - Feedback explanation tooltips
+
+6. **Performance Optimization**
+   - Cache ranking results per company description (avoid re-ranking)
+   - Use vector database (Pinecone, Weaviate) for >10K companies
+   - Background job for embedding generation (non-blocking)
+
+7. **Multi-language Support**
+   - Translate tender titles to English (Google Translate API)
+   - Support English company descriptions
+   - **Note:** OpenAI embeddings already handle Polish well
+
+### Low Priority (Nice to Have)
+
+8. **Analytics Dashboard**
+   - Show trending tenders (most viewed/liked)
+   - Company matching statistics
+   - Feedback effectiveness metrics (precision improvements)
+
+9. **Collaborative Filtering**
+   - "Companies like yours also viewed..." recommendations
+   - Learn from viewing patterns, not just explicit feedback
+
+10. **A/B Testing Framework**
+    - Test different similarity thresholds (0.6 vs 0.7 vs 0.8)
+    - Compare metadata-only vs full-document embeddings
+    - Measure precision improvements
