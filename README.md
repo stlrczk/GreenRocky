@@ -1,10 +1,8 @@
 # AI Tender Matching System
 
-An MVP system that matches Polish tenders to companies using OpenAI embeddings and user feedback.
+MVP system matching Polish tenders to companies using OpenAI embeddings and company-aware feedback.
 
-**Tech Stack:** FastAPI (backend), Next.js 14 (frontend), OpenAI text-embedding-3-small
-
----
+**Tech Stack:** FastAPI, Next.js 14, OpenAI text-embedding-3-small
 
 ## Quick Start
 
@@ -59,185 +57,67 @@ npm run dev
 
 Open [http://localhost:3000](http://localhost:3000)
 
----
+## How It Works
 
-## How Recommendations Work
+### 1. Semantic Matching
 
-### 1. **Semantic Matching with Embeddings**
-
-The system converts both tenders and company descriptions into high-dimensional vectors (embeddings) using OpenAI's `text-embedding-3-small` model. These embeddings capture semantic meaning, not just keywords.
+Uses OpenAI `text-embedding-3-small` to convert tenders and company descriptions into vectors. Ranking based on cosine similarity between company and tender embeddings.
 
 **Process:**
-1. **One-time setup:** Generate embeddings for all 1,412 tenders from metadata (title + organization)
-2. **Per query:** Generate embedding for user's company description
-3. **Similarity calculation:** Compute cosine similarity between company embedding and each tender embedding
-4. **Initial ranking:** Sort tenders by similarity score (0-1 range), return top 100
+1. One-time: Generate embeddings for hardcoded 1,412 tenders (metadata: title + organization) - already cached in repository
+2. Per query: Generate embedding for company description
+3. Calculate cosine similarity, return top 100 by similarity score (0-1 range)
 
-**Example:**
-- Company: *"We provide landscaping, tree cutting, and green area maintenance"*
-- High-scoring tender: *"Tree cutting services for Warsaw parks"* (similarity: 0.85)
-- Low-scoring tender: *"Hospital medical equipment procurement"* (similarity: 0.23)
+### 2. Company-Aware Feedback
 
-### 2. **Company-Aware Feedback Adjustment**
+Feedback adjusts ranking **only for similar companies**, filtered by embedding similarity (threshold: 0.7).
 
-After initial ranking, the system applies feedback weights from **similar companies only**:
-
-**Feedback Formula:**
+**Formula:**
 ```
 final_score = similarity_score × (1 + feedback_weight)
-
-where:
 feedback_weight = (positive - negative) / (positive + negative + 10)
 ```
 
-**Key Innovation:** Feedback is filtered by company similarity:
-- Company A (landscaping) rates tender as 👍
-- Tender gets boosted **only** for similar companies (tree services, gardening, etc.)
-- Dissimilar companies (medical, IT) are unaffected
+**Key points:**
+- Feedback from Company A affects only companies with ≥0.7 similarity to Company A
+- Companies with <0.7 similarity are unaffected
+- Feedback applies **only to tenders in current dataset** - when new tender list is loaded, feedback must be reset
 
-**Similarity Threshold:** 0.7 (configurable in [backend/app/config.py](backend/app/config.py))
+### 3. Storage
 
----
-
-## User Feedback System
-
-### How Feedback Influences Ranking
-
-**Step-by-Step Flow:**
-
-1. **User rates a tender:** Clicks 👍 or 👎 on a tender card
-2. **Backend stores:**
-   - Feedback entry: `{"tender_id": "123", "company_hash": "abc...", "feedback": "positive"}`
-   - Company embedding: Saved for future similarity comparisons
-3. **Future rankings:**
-   - System calculates similarity between new company and all past companies
-   - Only feedback from similar companies (≥0.7 similarity) affects scores
-   - Positive feedback boosts scores, negative feedback reduces them
-
-**Example Scenario:**
-
-```
-Company A (GreenWorks - Landscaping):
-  → Rates Tender #1243607 "Tree cutting" as 👍 positive
-
-Company B (TreeCare - Similar to GreenWorks, 0.81 similarity):
-  → Searches for tenders
-  → Tender #1243607 IS boosted (+9% score increase)
-
-Company C (MedSupply - Medical, 0.15 similarity to GreenWorks):
-  → Searches for tenders
-  → Tender #1243607 NOT affected (similarity below 0.7 threshold)
-```
-
-### Benefits of Company-Aware Feedback
-
-- **Personalization:** Each company type learns from relevant feedback only
-- **No pollution:** Landscaping feedback doesn't affect medical companies
-- **Cold start friendly:** New companies benefit from existing similar companies' feedback
-- **Zero cost:** Reuses embeddings already generated during ranking
-
----
+- **Tender embeddings:** `backend/data/embeddings_cache.json`
+- **Feedback:** `backend/data/feedback.jsonl`
+- **Company embeddings:** `backend/data/company_embeddings.jsonl`
 
 ## Key Assumptions & Limitations
 
-### Assumptions
+**Assumptions:**
+1. Tender metadata (title + organization) sufficient for matching
+2. Embedding similarity correlates with business relevance
+3. Company similarity predicts feedback relevance
+4. User feedback is honest
 
-1. **Metadata is sufficient:** Tender titles and organization names contain enough information for matching
-   - *Reality:* Most Polish tenders have descriptive titles (e.g., "Tree cutting for Warsaw parks")
-   - *Limitation:* Some tenders have vague titles ("Various services")
+**Limitations:**
 
-2. **Text-based matching works:** Semantic similarity in embeddings correlates with business relevance
-   - *Reality:* Works well for clear service descriptions
-   - *Limitation:* Doesn't capture non-textual factors (pricing, location, certifications)
+- Metadata-only embeddings (no full tender documents)
+- Static snapshot of 1,412 tenders (no auto-updates)
+- No filtering by deadline, location, or category
+- **Feedback tied to specific tender dataset** - new tenders require feedback reset
 
-3. **Company similarity predicts feedback relevance:** Companies with similar descriptions have similar tender preferences
-   - *Reality:* True for most cases (landscaping companies prefer similar tenders)
-   - *Limitation:* Doesn't account for company size, experience level, or regional focus
+## Next Iteration
 
-4. **User feedback is honest:** Thumbs up/down accurately reflects tender relevance
-   - *Limitation:* No spam protection, single user can skew results
+### High Priority [crucial for better MVP/PoC]
+1. **Full document embeddings** - Use tender detail files instead of metadata only
+2. **Brainstorm ideas** for feedback algorithm to improve over time with brand new, daily tenders lists
+  - Option 1: Tender Similarity Transfer
+    - When new tenders arrive, transfer feedback by finding similar old tenders (via embedding similarity) and applying their feedback weights to new tenders for companies with similar profiles.
+- Option 2: Company Preference Vectors
+    - Learn persistent "preference vectors" per company by aggregating embeddings of positively-rated tenders, then score new tenders by similarity to each company's preference vector instead of using per-tender feedback.
+3. **User accounts and database** - PostgreSQL + JWT/OAuth for persistent feedback and saved preferences and embeddings
 
-### Current Limitations
+### Medium Priority [mandatory for production release]
+4. **Performance optimization** - Caching, vector database
 
-**Data:**
-- Only tender metadata used (title + organization), not full tender documents
-- 1,412 tenders from single snapshot (no updates)
-- No tender filtering (all tenders shown, regardless of deadline status)
-
-**Functionality:**
-- No user accounts or session persistence
-- No tender search/filtering by category, location, or deadline
-- No notification system for new matching tenders
-- Feedback buttons reset on page refresh (local state only)
-
-**Performance:**
-- First ranking query takes ~500ms (acceptable for MVP)
-- Company embeddings file grows linearly (~15KB per company)
-- No optimization for 10,000+ companies (would need vector database)
-
-**Cost:**
-- Initial setup: $0.0014 (one-time)
-- Per query: $0.000006 (~$0.02/month for 3,000 queries)
-- Cost increases 71× if using full tender documents (~$0.10/month)
-
----
-
-## Next Iteration Improvements
-
-### High Priority (Core Functionality)
-
-1. **Full Document Embeddings**
-   - Use tender detail files instead of just metadata
-   - Cost: ~$0.10 one-time for all 1,412 tenders
-   - Expected improvement: 15-20% better precision
-   - **Implementation:** [COST_ANALYSIS.md](COST_ANALYSIS.md) has full analysis
-
-2. **User Accounts & Saved Preferences**
-   - Persistent feedback history per user
-   - Saved company descriptions
-   - Email notifications for new matching tenders
-   - **Stack:** Add PostgreSQL + authentication (JWT or OAuth)
-
-3. **Advanced Filtering**
-   - Filter by deadline, location, tender value range
-   - Category-based filtering (construction, services, goods)
-   - Hide expired tenders automatically
-   - **Implementation:** Add filters to ranking endpoint + frontend UI
-
-4. **Tender Updates**
-   - Automatic scraping of new tenders (daily/weekly)
-   - Notification system for new matches above threshold
-   - Archive old tenders past deadline
-
-### Medium Priority (UX & Performance)
-
-5. **Improved Feedback Visualization**
-   - Show why tender was recommended (matching keywords)
-   - Display feedback confidence (e.g., "5 similar companies ranked it as relevant")
-   - Feedback explanation tooltips
-
-6. **Performance Optimization**
-   - Cache ranking results per company description (avoid re-ranking)
-   - Use vector database (Pinecone, Weaviate) for >10K companies
-   - Background job for embedding generation (non-blocking)
-
-7. **Multi-language Support**
-   - Translate tender titles to English (Google Translate API)
-   - Support English company descriptions
-   - **Note:** OpenAI embeddings already handle Polish well
-
-### Low Priority (Nice to Have)
-
-8. **Analytics Dashboard**
-   - Show trending tenders (most viewed/liked)
-   - Company matching statistics
-   - Feedback effectiveness metrics (precision improvements)
-
-9. **Collaborative Filtering**
-   - "Companies like yours also viewed..." recommendations
-   - Learn from viewing patterns, not just explicit feedback
-
-10. **A/B Testing Framework**
-    - Test different similarity thresholds (0.6 vs 0.7 vs 0.8)
-    - Compare metadata-only vs full-document embeddings
-    - Measure precision improvements
+### Low Priority [nice to have after releasing to prod]
+5. **Analytics dashboard** - Trending tenders, feedback effectiveness metrics
+6. **A/B testing** - Compare thresholds (0.6/0.7/0.8), metadata vs full documents
